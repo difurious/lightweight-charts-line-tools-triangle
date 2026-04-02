@@ -28,6 +28,8 @@ import {
 	HitTestResult,
 	LineToolHitTestData,
 	CompositeRenderer,
+	getToolCullingState,
+	OffScreenState,
 } from 'lightweight-charts-line-tools-core';
 
 import { LineToolTrianglePaneView } from '../views/LineToolTrianglePaneView';
@@ -249,5 +251,49 @@ export class LineToolTriangle<HorzScaleItem> extends BaseLineTool<HorzScaleItem>
 		// if (hitResult) { console.log(`\tTriangle Tool ${this.id()} Hit: Type ${hitResult.type()}, Index ${hitResult.data()?.pointIndex}`); }
 
 		return hitResult;
+	}
+
+	/**
+	 * Calculates the Triangle's visibility based on its 3-point area.
+	 * 
+	 * ### Tutorial Note on Triangle Culling
+	 * A Triangle is a filled polygon. To prevent the background fill from 
+	 * "popping" out when the user zooms into the middle of the shape, 
+	 * we use Area-Based culling.
+	 * 
+	 * This method passes all three vertices to the core engine. The engine 
+	 * calculates the total bounding box (AABB) and performs a solid 2D 
+	 * intersection test against the viewport.
+	 * 
+	 * @protected
+	 * @override
+	 */
+	protected override updateCullingState(): void {
+		const points = this.points();
+
+		// 1. Guard: Ensure the tool is finished and not being modified. 
+		// This ensures visibility during the multi-click creation process.
+		if (points.length < this.pointsCount || this.isCreating() || this.isEditing()) {
+			this._setIsCulled(false);
+			return;
+		}
+
+		// --- AREA-BASED CULLING START ---
+
+		// 2. Invoke the Core Culler in Area-Based mode.
+		// We pass the 3 vertices. The core finds the min/max Price/Time 
+		// and performs a single O(1) overlap check.
+		const cullingState = getToolCullingState(
+			points, 
+			this, 
+			undefined, // Triangles do not currently support infinite extensions
+			undefined, 
+			undefined, 
+			true // isAreaBased: true
+		);
+
+		this._setIsCulled(cullingState !== OffScreenState.Visible);
+
+		// --- AREA-BASED CULLING END ---
 	}
 }

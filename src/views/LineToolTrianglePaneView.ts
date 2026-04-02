@@ -19,8 +19,6 @@ import {
 	deepCopy,
 	LineOptions,
 	BackgroundOptions,
-	OffScreenState,
-	getToolCullingState,
 	LineToolPoint,
 	BoxHorizontalAlignment,
 	PaneCursorType,
@@ -86,8 +84,17 @@ export class LineToolTrianglePaneView<HorzScaleItem> extends LineToolPaneView<Ho
 			return;
 		}
 
-		const permanentPoints = this._tool.getPermanentPointsForTranslation();
-		const isFinished = permanentPoints.length === this._tool.pointsCount;
+		/**
+		 * CULLING CHECK
+		 * 
+		 * We query the Model's pre-calculated state. This ensures that the 
+		 * triangle remains visible even if its vertices are off-screen, 
+		 * provided the viewport is inside the filled area.
+		 */
+		if (this._tool.isCulled()) {
+			//console.log('triangle culled')
+			return;
+		}
 
 		// 1. Convert logical points to raw screen coordinates
 		const hasScreenPoints = this._updatePoints(); // Populates this._points (raw screen points)
@@ -97,39 +104,6 @@ export class LineToolTrianglePaneView<HorzScaleItem> extends LineToolPaneView<Ho
 			return;
 		}
 		
-		// --- CULLING IMPLEMENTATION START (Simple AABB Check) ---
-		// We only check if the tool is finished. During creation, we always draw.
-		if (isFinished) {
-			const toolAABB = getToolBoundingBox(permanentPoints);
-
-			if (toolAABB) {
-				const boundingPointsLogical: LineToolPoint[] = [
-					// Point 1: Top-Left Corner (Min Time, Max Price)
-					{ timestamp: toolAABB.minTime, price: toolAABB.maxPrice },
-					// Point 2: Bottom-Right Corner (Max Time, Min Price)
-					{ timestamp: toolAABB.maxTime, price: toolAABB.minPrice }
-				];
-
-				/**
-				 * CULLING & VISIBILITY CHECK
-				 *
-				 * For a closed shape like a Triangle, we use a Bounding Box (AABB) check.
-				 * 1. Calculate the bounding box of the 3 points in logical space.
-				 * 2. Check if that box intersects the current viewport.
-				 *
-				 * We only strictly cull "Finished" tools. During creation/editing, we allow drawing
-				 * even if partially off-screen to ensure the user doesn't lose track of the tool.
-				 */
-				const cullingState = getToolCullingState(boundingPointsLogical, this._tool);
-
-				if (cullingState !== OffScreenState.Visible) {
-					//console.log('triangle culled')
-					return;
-				}
-			}
-		}
-		// --- CULLING IMPLEMENTATION END ---
-
 		// --- 2. Configure Renderer Data ---
 		
 		// The Triangle is a closed shape, so we need 3 points.
